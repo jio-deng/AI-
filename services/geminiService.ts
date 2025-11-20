@@ -1,7 +1,9 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { Message, Scenario, TurnResult } from "../types";
 
-const apiKey = process.env.API_KEY;
+// Safe access to process.env for browser environments
+const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
+
 // Determine the model to use. Using flash for speed and low latency which is crucial for a game.
 // gemini-2.5-flash is excellent for this roleplay logic.
 const MODEL_NAME = "gemini-2.5-flash";
@@ -13,7 +15,8 @@ if (!apiKey) {
 const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy-key' });
 
 // Define the JSON schema for the game engine response
-const responseSchema: Schema = {
+// Removed explicit ': Schema' type to avoid import issues
+const responseSchema = {
   type: Type.OBJECT,
   properties: {
     text: {
@@ -154,7 +157,7 @@ export const generateTurn = async (
     return {
       text: "我现在无法理解你的意思。(AI Error)",
       scoreDelta: 0,
-      aiMood: "困惑",
+      aiMood: "错误",
       isGameOver: false,
       isWin: false,
     };
