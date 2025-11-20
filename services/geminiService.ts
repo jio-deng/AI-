@@ -1,21 +1,14 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { Message, Scenario, TurnResult } from "../types";
+import { Message, Scenario, TurnResult, Persona } from "../types";
 
-// Safe access to process.env for browser environments
-const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
-
-// Determine the model to use. Using flash for speed and low latency which is crucial for a game.
-// gemini-2.5-flash is excellent for this roleplay logic.
 const MODEL_NAME = "gemini-2.5-flash";
 
-if (!apiKey) {
-  console.error("API_KEY is missing from environment variables.");
-}
-
-const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy-key' });
+// Initialize GoogleGenAI. The SDK handles process.env.API_KEY automatically in many contexts,
+// but passing it explicitly is safer for all build environments.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Define the JSON schema for the game engine response
-// Removed explicit ': Schema' type to avoid import issues
 const responseSchema = {
   type: Type.OBJECT,
   properties: {
@@ -49,25 +42,16 @@ const responseSchema = {
 
 export const generateTurn = async (
   scenario: Scenario,
+  persona: Persona,
   history: Message[],
   currentScore: number
 ): Promise<TurnResult> => {
-  if (!apiKey) {
-    return {
-      text: "API Key 缺失。请检查配置。",
-      scoreDelta: 0,
-      aiMood: "错误",
-      isGameOver: false,
-      isWin: false,
-    };
-  }
-
+  
   // 1. Calculate Game State Metrics for Strategy
   const userTurns = history.filter(m => m.role === 'user').length;
   const turnsLeft = scenario.turnLimit - userTurns;
   
   // Momentum: Sum of score changes from the last 2 AI turns.
-  // If near 0, the negotiation is stalled.
   const recentAiMsgs = history.filter(m => m.role === 'ai' && m.scoreDelta !== undefined).slice(-2);
   const momentum = recentAiMsgs.reduce((sum, msg) => sum + (msg.scoreDelta || 0), 0);
   
@@ -96,13 +80,18 @@ export const generateTurn = async (
   }
 
   const historyText = history
-    .map((m) => `${m.role === "user" ? "玩家" : scenario.aiRole}: ${m.content}`)
+    .map((m) => `${m.role === "user" ? "玩家" : persona.name}: ${m.content}`)
     .join("\n");
 
   const systemPrompt = `
     You are a roleplay game engine. 
-    You are playing the role of: ${scenario.aiRole}.
+    You are playing the role of: ${persona.name} (${scenario.title}).
     The user is playing: ${scenario.userRole}.
+    
+    --- CHARACTER PROFILE ---
+    NAME: ${persona.name}
+    DESCRIPTION: ${persona.description}
+    PERSONALITY STYLE: ${persona.style} (Adopt this tone strictly!)
     
     --- SCENARIO INFO ---
     SCENARIO: ${scenario.description}
@@ -119,10 +108,11 @@ export const generateTurn = async (
     
     --- RULES ---
     1. **IMPORTANT**: YOU MUST SPEAK CHINESE (Simplified Chinese).
-    2. Adjust 'scoreDelta' based on argument quality (-15 to +15).
-    3. If score reaches ${scenario.winningScore}, you MUST accept (Win).
-    4. If turns run out (0 left) and score is below winning score, you MUST reject (Loss).
-    5. Keep response concise (under 50 words).
+    2. Act fully in character according to your PERSONALITY STYLE.
+    3. Adjust 'scoreDelta' based on argument quality (-15 to +15).
+    4. If score reaches ${scenario.winningScore}, you MUST accept (Win).
+    5. If turns run out (0 left) and score is below winning score, you MUST reject (Loss).
+    6. Keep response concise (under 50 words).
     
     Output strictly in JSON matching the schema.
   `;
@@ -142,7 +132,7 @@ export const generateTurn = async (
       config: {
         responseMimeType: "application/json",
         responseSchema: responseSchema,
-        temperature: 0.8, // Creative for dialogue
+        temperature: 0.85, 
       },
     });
 
@@ -155,9 +145,9 @@ export const generateTurn = async (
   } catch (error) {
     console.error("Gemini API Error:", error);
     return {
-      text: "我现在无法理解你的意思。(AI Error)",
+      text: "（连接不稳定，请重试）... 我刚刚走神了，你说什么？",
       scoreDelta: 0,
-      aiMood: "错误",
+      aiMood: "困惑",
       isGameOver: false,
       isWin: false,
     };

@@ -1,3 +1,4 @@
+
 export enum ScenarioDifficulty {
   EASY = 'Easy',
   MEDIUM = 'Medium',
@@ -5,14 +6,21 @@ export enum ScenarioDifficulty {
   EXTREME = 'Extreme'
 }
 
+export interface Persona {
+  id: string;
+  name: string;
+  description: string;
+  style: string; // Hint for AI behavior (e.g. "Aggressive", "Logical", "Emotional")
+  initialMessage: string;
+}
+
 export interface Scenario {
   id: string;
   title: string;
   description: string;
   difficulty: ScenarioDifficulty;
-  aiRole: string;
+  personas: Persona[]; // List of available opponents
   userRole: string;
-  initialMessage: string;
   goal: string;
   turnLimit: number;
   baseScore: number; // Starting persuasion score (0-100)
@@ -40,6 +48,7 @@ export interface TurnResult {
 
 export enum GameStatus {
   MENU = 'MENU',
+  PERSONA_SELECT = 'PERSONA_SELECT',
   PLAYING = 'PLAYING',
   WON = 'WON',
   LOST = 'LOST'
