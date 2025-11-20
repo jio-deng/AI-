@@ -18,7 +18,7 @@ const responseSchema = {
     },
     scoreDelta: {
       type: Type.INTEGER,
-      description: "The change in persuasion score (-15 to +15) based on the user's latest argument quality.",
+      description: "The change in persuasion score (-8 to +8) based on the user's latest argument quality. Be stingy with high scores.",
     },
     aiMood: {
       type: Type.STRING,
@@ -65,16 +65,16 @@ export const generateTurn = async (
   } else if (turnsLeft <= 1) {
       strategyName = "FINAL_STAND";
       strategyDirective = "This is the LAST turn. If the user's argument is convincing and score is near the goal, ACCEPT. Otherwise, REJECT firmly and end the negotiation.";
-  } else if (turnsLeft <= 3 && currentScore < scenario.winningScore * 0.6) {
+  } else if (turnsLeft <= 5 && currentScore < scenario.winningScore * 0.6) {
       strategyName = "PRESSURE";
       strategyDirective = "Time is running out and the user is failing. Be strict, impatient, and threaten to walk away unless a major concession is made.";
-  } else if (Math.abs(momentum) <= 4 && userTurns >= 2 && currentScore < scenario.winningScore - 10) {
+  } else if (Math.abs(momentum) <= 4 && userTurns >= 3 && currentScore < scenario.winningScore - 10) {
       strategyName = "STALEMATE_BREAKER";
       strategyDirective = "The negotiation is stuck (stagnant score). Propose a specific compromise, counter-offer, or alternative solution to break the deadlock. Be constructive but firm.";
   } else if (currentScore < scenario.baseScore && userTurns >= 2) {
       strategyName = "DOMINANT";
       strategyDirective = "You have the upper hand. The user is performing poorly. Be dismissive, skeptical, and make them work harder to win back your interest.";
-  } else if (currentScore > scenario.winningScore - 15) {
+  } else if (currentScore > scenario.winningScore - 10) {
       strategyName = "CLOSING";
       strategyDirective = "The user is very close to the goal. Show you are wavering. Ask for one final small assurance or detail before agreeing.";
   }
@@ -109,16 +109,21 @@ export const generateTurn = async (
     --- RULES ---
     1. **IMPORTANT**: YOU MUST SPEAK CHINESE (Simplified Chinese).
     2. Act fully in character according to your PERSONALITY STYLE.
-    3. Adjust 'scoreDelta' based on argument quality (-15 to +15).
+    3. Adjust 'scoreDelta' based on argument quality (-8 to +8). Do NOT give large jumps unless the argument is perfect.
     4. If score reaches ${scenario.winningScore}, you MUST accept (Win).
     5. If turns run out (0 left) and score is below winning score, you MUST reject (Loss).
-    6. Keep response concise (under 50 words).
+    6. Keep response concise (under 60 words).
     
     Output strictly in JSON matching the schema.
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    // Add a simple timeout to prevent infinite loading if the API hangs
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error("Request timed out")), 15000)
+    );
+
+    const apiCall = ai.models.generateContent({
       model: MODEL_NAME,
       contents: `
         ${systemPrompt}
@@ -136,6 +141,8 @@ export const generateTurn = async (
       },
     });
 
+    const response = await Promise.race([apiCall, timeoutPromise]) as any;
+
     const jsonText = response.text;
     if (!jsonText) throw new Error("Empty response from AI");
     
@@ -145,9 +152,9 @@ export const generateTurn = async (
   } catch (error) {
     console.error("Gemini API Error:", error);
     return {
-      text: "（连接不稳定，请重试）... 我刚刚走神了，你说什么？",
+      text: "（思考时间过长...）抱歉，我刚才走神了。你能再说一遍你的条件吗？",
       scoreDelta: 0,
-      aiMood: "困惑",
+      aiMood: "思考中",
       isGameOver: false,
       isWin: false,
     };
